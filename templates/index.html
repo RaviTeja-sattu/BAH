@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AQI India Observatory · Hourly Air Quality Atlas</title>
+<meta name="description" content="Interactive hourly Air Quality Index dashboard — AQI, PM2.5, PM10, NO2, SO2, CO, Ozone grids over India.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<style>
+/* ════════════════════════════════════════════════════════════════════
+   AQI INDIA OBSERVATORY — futuristic dark UI
+   ════════════════════════════════════════════════════════════════════ */
+:root{
+  --bg:#05070d; --bg2:#0a0e18; --panel:#0d111c; --panel2:#10151f;
+  --line:#1b2433; --line2:#232e42;
+  --text:#e7ecf5; --text-dim:#8c9bb5; --text-faint:#566177;
+  --accent:#ff9d2e; --accent2:#36e2c4; --accent3:#7c8cff;
+  --good:#00e400; --moderate:#ffff00; --usg:#ff7e00; --unhealthy:#ff0000;
+  --vunhealthy:#8f3f97; --hazardous:#7e0023;
+  --danger:#ff5c6c; --radius:10px; --radius-lg:16px;
+  --shadow:0 8px 30px rgba(0,0,0,0.45);
+  --mono:'JetBrains Mono',monospace;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html,body{height:100%; background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; overflow:hidden;}
+::-webkit-scrollbar{width:8px; height:8px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--line2); border-radius:4px;}
+::-webkit-scrollbar-thumb:hover{background:var(--accent);}
+button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit;}
+input{font-family:inherit;}
+
+/* ── LOADER ── */
+#loader{position:fixed; inset:0; z-index:9999; background:radial-gradient(ellipse at 50% 40%,#0d1424 0%,#05070d 70%);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; transition:opacity .6s ease, visibility .6s ease;}
+#loader.hide{opacity:0; visibility:hidden; pointer-events:none;}
+.loader-logo{font-size:54px; filter:drop-shadow(0 0 24px rgba(255,157,46,.55)); animation:pulse 1.8s ease-in-out infinite;}
+@keyframes pulse{0%,100%{transform:scale(1);}50%{transform:scale(1.12);}}
+.ll{font-family:var(--mono); font-size:13px; letter-spacing:.32em; color:var(--text-dim); font-weight:600;}
+.lb{width:280px; height:3px; background:var(--line); border-radius:3px; overflow:hidden;}
+.lp{height:100%; width:0%; background:linear-gradient(90deg,var(--accent),var(--accent2)); border-radius:3px; transition:width .25s ease;}
+.lm{font-family:var(--mono); font-size:10.5px; color:var(--text-faint); letter-spacing:.1em;}
+
+/* ── APP SHELL ── */
+#app{height:100vh; display:flex; flex-direction:column;}
+
+/* ── HEADER ── */
+#hdr{height:58px; flex:0 0 auto; display:flex; align-items:center; gap:14px; padding:0 16px;
+  background:linear-gradient(180deg,#0b0f19,#090c14); border-bottom:1px solid var(--line); z-index:50;}
+.hbtn{width:34px; height:34px; display:flex; align-items:center; justify-content:center; border-radius:8px; color:var(--text-dim); font-size:16px; transition:.15s;}
+.hbtn:hover{background:var(--line); color:var(--text);}
+.hdr-brand{display:flex; align-items:center; gap:10px;}
+.hdr-logo{font-size:24px; filter:drop-shadow(0 0 10px rgba(255,157,46,.5));}
+.header-title{font-size:15.5px; font-weight:700; letter-spacing:.01em;}
+.hdr-sub{font-family:var(--mono); font-size:10px; color:var(--text-faint); letter-spacing:.07em; margin-top:1px;}
+.hdr-sep{width:1px; height:26px; background:var(--line);}
+.bm-group{display:flex; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:3px; gap:2px;}
+.bm-btn{padding:5px 12px; font-size:11.5px; font-weight:600; border-radius:6px; color:var(--text-dim); letter-spacing:.02em; transition:.15s;}
+.bm-btn:hover{color:var(--text);}
+.bm-btn.on{background:var(--line2); color:var(--text);}
+.hdr-space{flex:1;}
+.status-badge{display:flex; align-items:center; gap:7px; padding:6px 12px; border-radius:20px; background:var(--panel2); border:1px solid var(--line); font-family:var(--mono); font-size:10.5px; color:var(--text-dim);}
+.status-dot{width:7px; height:7px; border-radius:50%; background:var(--text-faint); transition:.3s;}
+.status-dot.ok{background:var(--accent2); box-shadow:0 0 8px var(--accent2);}
+.status-dot.bad{background:var(--danger); box-shadow:0 0 8px var(--danger);}
+.play-btn{display:flex; align-items:center; gap:7px; padding:7px 14px; border-radius:8px; background:linear-gradient(135deg,#ff9d2e,#ff7a3d); color:#1a0e02; font-weight:700; font-size:12px; letter-spacing:.03em; box-shadow:0 4px 14px rgba(255,157,46,.3); transition:.15s;}
+.play-btn:hover{filter:brightness(1.08); transform:translateY(-1px);}
+.play-btn.playing{background:linear-gradient(135deg,#36e2c4,#22b8a0); box-shadow:0 4px 14px rgba(54,226,196,.3); color:#04231d;}
+
+/* ── MAIN LAYOUT ── */
+#main{flex:1; display:flex; min-height:0; position:relative;}
+
+/* ── SIDEBAR ── */
+#sb{width:288px; flex:0 0 auto; background:var(--panel); border-right:1px solid var(--line); overflow-y:auto; transition:margin-left .25s ease; z-index:40;}
+#sb.collapsed{margin-left:-288px;}
+#sb-inner{padding:16px 16px 28px;}
+.sb-sec{margin-bottom:22px;}
+.sec-lbl{font-family:var(--mono); font-size:10px; letter-spacing:.14em; color:var(--text-faint); font-weight:600; margin-bottom:9px; display:flex; align-items:center; justify-content:space-between;}
+
+/* date / file picker */
+.date-list{display:flex; flex-direction:column; gap:6px;}
+.date-btn{display:flex; align-items:center; justify-content:space-between; padding:9px 12px; border-radius:8px; border:1px solid var(--line); background:var(--panel2); font-size:12.5px; font-weight:600; color:var(--text-dim); transition:.15s;}
+.date-btn:hover{border-color:var(--line2); color:var(--text);}
+.date-btn.on{border-color:var(--accent); background:rgba(255,157,46,.1); color:var(--accent);}
+.date-btn .dtag{font-family:var(--mono); font-size:9.5px; color:var(--text-faint); font-weight:500;}
+.date-btn.on .dtag{color:var(--accent);}
+
+/* variable grid */
+.var-grid{display:grid; grid-template-columns:1fr 1fr; gap:7px;}
+.var-btn{padding:10px 8px; border-radius:8px; border:1px solid var(--line); background:var(--panel2); font-size:12px; font-weight:600; color:var(--text-dim); text-align:center; transition:.15s; position:relative;}
+.var-btn:hover{color:var(--text); border-color:var(--line2);}
+.var-btn.on{border-color:var(--accent2); background:rgba(54,226,196,.1); color:var(--accent2);}
+.var-btn .vunit{display:block; font-family:var(--mono); font-size:8.5px; color:var(--text-faint); margin-top:2px; font-weight:500;}
+.var-btn.on .vunit{color:var(--accent2); opacity:.8;}
+
+/* hour slider */
+.hour-readout{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;}
+.hour-big{font-family:var(--mono); font-size:26px; font-weight:700; color:var(--accent);}
+.hour-of{font-family:var(--mono); font-size:11px; color:var(--text-faint);}
+input[type=range]{-webkit-appearance:none; width:100%; height:5px; border-radius:3px; background:var(--line2); outline:none;}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:16px; height:16px; border-radius:50%; background:var(--accent); cursor:pointer; box-shadow:0 0 0 4px rgba(255,157,46,.18); transition:.15s;}
+input[type=range]::-webkit-slider-thumb:hover{box-shadow:0 0 0 6px rgba(255,157,46,.25);}
+.hour-ticks{display:flex; justify-content:space-between; font-family:var(--mono); font-size:8.5px; color:var(--text-faint); margin-top:6px;}
+.hour-controls{display:flex; gap:8px; margin-top:12px;}
+.hc-btn{flex:1; padding:8px; border-radius:7px; border:1px solid var(--line); background:var(--panel2); font-size:11px; font-weight:600; color:var(--text-dim); transition:.15s;}
+.hc-btn:hover{color:var(--text); border-color:var(--line2);}
+
+/* toggles */
+.tog-row{display:flex; align-items:center; justify-content:space-between; padding:7px 0;}
+.tog-lbl{font-size:12px; color:var(--text-dim);}
+.info-val{font-family:var(--mono); font-size:11.5px; color:var(--text); font-weight:600;}
+.sw{position:relative; width:36px; height:20px; flex:0 0 auto;}
+.sw input{opacity:0; width:0; height:0;}
+.sw-sl{position:absolute; inset:0; background:var(--line2); border-radius:20px; transition:.2s; cursor:pointer;}
+.sw-sl::before{content:''; position:absolute; width:14px; height:14px; left:3px; top:3px; background:#aab4c6; border-radius:50%; transition:.2s;}
+.sw input:checked + .sw-sl{background:linear-gradient(135deg,#ff9d2e,#ff7a3d);}
+.sw input:checked + .sw-sl::before{transform:translateX(16px); background:#1a0e02;}
+
+/* opacity slider */
+.opacity-row{display:flex; align-items:center; gap:10px;}
+.opacity-row input[type=range]{flex:1;}
+.opacity-val{font-family:var(--mono); font-size:11px; color:var(--text-dim); width:34px; text-align:right;}
+
+/* legend */
+.legend-aqi{display:flex; flex-direction:column; gap:3px;}
+.leg-cat{display:flex; align-items:center; gap:8px; font-size:11px; color:var(--text-dim); padding:2px 0;}
+.leg-sw{width:13px; height:13px; border-radius:3px; flex:0 0 auto;}
+.leg-cat b{color:var(--text); font-weight:600;}
+.colorbar-wrap{padding-top:2px;}
+.colorbar{height:10px; border-radius:5px; background:linear-gradient(90deg,#0c0c3c,#281e82,#6e1ea0,#dc3c78,#ff8c28,#fff578);}
+.colorbar.aqi{background:linear-gradient(90deg,#00e400 0%,#00e400 10%,#ffff00 20%,#ff7e00 30%,#ff0000 40%,#8f3f97 60%,#7e0023 100%);}
+.colorbar-labels{display:flex; justify-content:space-between; font-family:var(--mono); font-size:9px; color:var(--text-faint); margin-top:5px;}
+.colorbar-labels.aqi span{flex:1; text-align:center;}
+.colorbar-labels.aqi span:first-child{text-align:left;}
+.colorbar-labels.aqi span:last-child{text-align:right;}
+
+/* stat block */
+.stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px;}
+.stat-box{background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:9px 11px;}
+.stat-box .sl{font-family:var(--mono); font-size:9px; color:var(--text-faint); letter-spacing:.07em;}
+.stat-box .sv{font-family:var(--mono); font-size:16px; font-weight:700; color:var(--text); margin-top:3px;}
+
+/* ── MAP / PANELS COLUMN ── */
+#mc{flex:1; display:flex; flex-direction:column; min-width:0;}
+#map-wrap{flex:1; position:relative; min-height:0;}
+#map{position:absolute; inset:0; background:#070a12;}
+.leaflet-container{background:#070a12 !important; font-family:'Inter',sans-serif;}
+
+.map-ov{position:absolute; background:rgba(10,14,24,.88); backdrop-filter:blur(10px); border:1px solid var(--line); border-radius:10px; box-shadow:var(--shadow); z-index:500; color:var(--text);}
+#map-badge{top:14px; left:14px; padding:8px 14px; font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.06em; color:var(--accent);}
+#map-sb-btn{display:none;}
+
+#coords-ov{bottom:14px; left:14px; padding:6px 12px; font-family:var(--mono); font-size:10.5px; color:var(--text-dim);}
+
+#leg{top:14px; right:14px; padding:12px 14px; min-width:170px;}
+.leg-title{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; color:var(--text-faint); margin-bottom:8px; font-weight:600;}
+
+#map-legend{bottom:14px; right:14px; padding:12px 16px; min-width:220px;}
+.legend-bar-grad{height:10px; border-radius:5px; margin:8px 0 5px;}
+.legend-bar-grad.aqi{background:linear-gradient(90deg,#00e400 0%,#00e400 10%,#ffff00 20%,#ff7e00 30%,#ff0000 40%,#8f3f97 60%,#7e0023 100%);}
+.legend-labels-row{display:flex; justify-content:space-between; font-family:var(--mono); font-size:9.5px; color:var(--text-dim);}
+.legend-labels-row.aqi{font-size:8.5px;}
+.legend-cats{display:flex; gap:0; border-radius:5px; overflow:hidden; height:9px; margin:8px 0 6px;}
+.legend-cats span{flex:1;}
+
+#pixel-marker-info{top:14px; left:50%; transform:translateX(-50%); padding:8px 16px; display:none; font-family:var(--mono); font-size:11px;}
+
+.leaflet-popup-content-wrapper{background:var(--panel2); color:var(--text); border-radius:10px; border:1px solid var(--line);}
+.leaflet-popup-tip{background:var(--panel2);}
+.leaflet-control-zoom a{background:var(--panel2) !important; color:var(--text) !important; border-color:var(--line) !important;}
+.leaflet-control-attribution{background:rgba(10,14,24,.7) !important; color:var(--text-faint) !important;}
+.leaflet-control-attribution a{color:var(--text-dim) !important;}
+
+/* ── STATS STRIP ── */
+#stats-strip{flex:0 0 auto; display:flex; align-items:center; gap:0; padding:0 18px; height:46px; background:var(--panel); border-top:1px solid var(--line);}
+.sv{display:flex; flex-direction:column; gap:1px; padding:0 16px;}
+.sv-lbl{font-family:var(--mono); font-size:8.5px; color:var(--text-faint); letter-spacing:.08em;}
+.sv-val{font-family:var(--mono); font-size:13px; font-weight:700; color:var(--text);}
+.sv-val.accent{color:var(--accent);}
+.sv-sep{width:1px; height:22px; background:var(--line);}
+.sv-spacer{flex:1;}
+
+/* ── HANDLE / PANEL ── */
+#handle{flex:0 0 auto; height:30px; display:flex; align-items:center; justify-content:center; gap:10px; background:var(--bg2); border-top:1px solid var(--line); cursor:pointer; user-select:none;}
+.hbar{width:36px; height:3px; border-radius:3px; background:var(--line2);}
+.hlbl{font-family:var(--mono); font-size:10px; letter-spacing:.1em; color:var(--text-faint); font-weight:600;}
+#handle:hover .hlbl{color:var(--accent);}
+
+#panel{flex:0 0 0; max-height:0; overflow:hidden; background:var(--bg2); transition:max-height .3s ease; border-top:1px solid transparent;}
+#panel.open{flex:0 0 300px; max-height:300px; border-top-color:var(--line);}
+
+#ptabs{display:flex; gap:2px; padding:10px 14px 0; flex:0 0 auto;}
+.ptab{padding:7px 14px; font-size:11.5px; font-weight:600; color:var(--text-faint); border-radius:7px 7px 0 0; transition:.15s;}
+.ptab:hover{color:var(--text-dim);}
+.ptab.on{color:var(--accent); background:var(--panel);}
+
+.pview{display:none; height:calc(100% - 40px); padding:12px 14px; gap:12px;}
+.pview.vis{display:flex;}
+
+.cpane{flex:1; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; min-width:0;}
+.ch{display:flex; align-items:baseline; gap:8px; margin-bottom:6px; flex:0 0 auto;}
+.ct{font-size:12px; font-weight:700; color:var(--text);}
+.cs{font-family:var(--mono); font-size:9.5px; color:var(--text-faint);}
+.ch-actions{margin-left:auto; display:flex; gap:4px;}
+.ch-btn{width:22px; height:22px; display:flex; align-items:center; justify-content:center; border-radius:5px; color:var(--text-faint); font-size:12px; transition:.15s;}
+.ch-btn:hover{background:var(--line); color:var(--text);}
+.cw{flex:1; position:relative; min-height:0;}
+.chart-placeholder{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color:var(--text-faint); font-size:11.5px; text-align:center; font-family:var(--mono);}
+.ph-icon{font-size:26px; opacity:.5;}
+
+/* ── FULLSCREEN MODAL ── */
+#fs-overlay{position:fixed; inset:0; background:rgba(3,5,10,.85); backdrop-filter:blur(6px); z-index:2000; display:none; align-items:center; justify-content:center;}
+#fs-overlay.vis{display:flex;}
+#fs-box{width:min(1100px,92vw); height:min(640px,82vh); background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,.5);}
+#fs-hdr{display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--line);}
+#fs-title{font-size:14px; font-weight:700;}
+#fs-sub{font-family:var(--mono); font-size:10px; color:var(--text-faint); margin-top:2px;}
+.fs-acts{display:flex; gap:8px;}
+.fs-act{padding:7px 13px; border-radius:7px; background:var(--panel2); border:1px solid var(--line); font-size:11.5px; font-weight:600; color:var(--text-dim);}
+.fs-act:hover{color:var(--text);}
+.fs-act.primary{background:var(--accent); color:#1a0e02; border-color:var(--accent);}
+#fs-body{flex:1; padding:18px;}
+
+/* misc */
+.loading-spin{display:inline-block; width:13px; height:13px; border:2px solid var(--line2); border-top-color:var(--accent); border-radius:50%; animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.empty-state{display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:10px; color:var(--text-faint); font-size:12px; text-align:center; padding:30px;}
+
+@media (max-width: 880px){
+  #sb{position:absolute; left:0; top:0; bottom:0; box-shadow:var(--shadow);}
+  #sb.collapsed{margin-left:-288px;}
+  #map-sb-btn{display:flex; position:absolute; top:14px; left:14px; z-index:600; width:34px; height:34px; align-items:center; justify-content:center; background:var(--panel2); border:1px solid var(--line); border-radius:8px;}
+  #map-badge{left:58px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ LOADER ═══ -->
+<div id="loader">
+  <div class="loader-logo">🌫️</div>
+  <div class="ll">AQI INDIA OBSERVATORY</div>
+  <div class="lb"><div class="lp" id="lp"></div></div>
+  <div class="lm" id="lmsg">CONNECTING TO SERVER…</div>
+</div>
+
+<div id="app">
+
+  <!-- ── HEADER ── -->
+  <div id="hdr">
+    <button class="hbtn" title="Toggle sidebar" onclick="toggleSidebar()">☰</button>
+    <div class="hdr-brand">
+      <div class="hdr-logo">🌫️</div>
+      <div>
+        <div class="header-title">AQI India Observatory</div>
+        <div class="hdr-sub" id="hdr-sub">HOURLY AIR QUALITY GRID · 450×450</div>
+      </div>
+    </div>
+
+    <div class="hdr-sep"></div>
+
+    <div class="bm-group" id="bm-group">
+      <button class="bm-btn on" data-bm="dark">Dark</button>
+      <button class="bm-btn" data-bm="light">Light</button>
+      <button class="bm-btn" data-bm="topo">Topo</button>
+    </div>
+
+    <div class="hdr-space"></div>
+
+    <button class="play-btn" id="play-btn" onclick="togglePlay()">▶ &nbsp;Animate 24h</button>
+    <select id="speed-select" class="bm-btn" style="background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:7px 8px; font-size:11.5px; font-weight:600; color:var(--text-dim);">
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+
+    <div class="hdr-sep"></div>
+
+    <div class="status-badge" id="server-badge">
+      <div class="status-dot" id="server-dot"></div>
+      <span id="server-status">Checking…</span>
+    </div>
+  </div>
+
+  <!-- ── MAIN ── -->
+  <div id="main">
+
+    <!-- ── SIDEBAR ── -->
+    <div id="sb">
+      <div id="sb-inner">
+
+        <!-- Date / File -->
+        <div class="sb-sec">
+          <div class="sec-lbl">Dataset Date</div>
+          <div class="date-list" id="date-list">
+            <div class="empty-state" style="height:60px;font-size:11px;">Loading files…</div>
+          </div>
+        </div>
+
+        <!-- Variable -->
+        <div class="sb-sec">
+          <div class="sec-lbl">Variable</div>
+          <div class="var-grid" id="var-grid"></div>
+        </div>
+
+        <!-- Hour -->
+        <div class="sb-sec">
+          <div class="sec-lbl">Hour of Day</div>
+          <div class="hour-readout">
+            <span class="hour-big" id="hour-big">00:00</span>
+            <span class="hour-of" id="hour-of">hour 0 / 23</span>
+          </div>
+          <input type="range" id="hour-slider" min="0" max="23" value="0" step="1">
+          <div class="hour-ticks"><span>00</span><span>06</span><span>12</span><span>18</span><span>23</span></div>
+          <div class="hour-controls">
+            <button class="hc-btn" onclick="stepHour(-1)">◀ Prev</button>
+            <button class="hc-btn" onclick="stepHour(1)">Next ▶</button>
+          </div>
+        </div>
+
+        <!-- Overlay opacity -->
+        <div class="sb-sec">
+          <div class="sec-lbl">Overlay Opacity</div>
+          <div class="opacity-row">
+            <input type="range" id="opacity-slider" min="10" max="100" value="85">
+            <span class="opacity-val" id="opacity-val">85%</span>
+          </div>
+        </div>
+
+        <!-- Layers -->
+        <div class="sb-sec">
+          <div class="sec-lbl">Map Layers</div>
+          <div class="tog-row"><span class="tog-lbl">Pollutant overlay</span><label class="sw"><input type="checkbox" id="tg-overlay" checked><div class="sw-sl"></div></label></div>
+          <div class="tog-row"><span class="tog-lbl">Pixel crosshair</span><label class="sw"><input type="checkbox" id="tg-crosshair" checked><div class="sw-sl"></div></label></div>
+        </div>
+
+        <!-- Legend -->
+        <div class="sb-sec">
+          <div class="sec-lbl" id="legend-title">AQI Legend</div>
+          <div id="legend-body"></div>
+        </div>
+
+        <!-- Live stats -->
+        <div class="sb-sec">
+          <div class="sec-lbl">Grid Statistics — this hour</div>
+          <div class="stat-grid">
+            <div class="stat-box"><div class="sl">MIN</div><div class="sv" id="st-min">—</div></div>
+            <div class="stat-box"><div class="sl">MAX</div><div class="sv" id="st-max">—</div></div>
+            <div class="stat-box"><div class="sl">MEAN</div><div class="sv" id="st-mean">—</div></div>
+            <div class="stat-box"><div class="sl">VALID PX</div><div class="sv" id="st-count">—</div></div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ── MAP & PANELS ── -->
+    <div id="mc">
+      <div id="map-wrap">
+        <div id="map"></div>
+        <button id="map-sb-btn" onclick="toggleSidebar()">☰</button>
+
+        <div class="map-ov" id="map-badge">AQI · LOADING…</div>
+
+        <div class="map-ov" id="leg">
+          <div class="leg-title">ACTIVE LAYER</div>
+          <div id="leg-body">—</div>
+        </div>
+
+        <div class="map-ov" id="coords-ov">Click map to inspect a pixel</div>
+
+        <div class="map-ov" id="map-legend">
+          <div style="font-size:10px; font-weight:700; margin-bottom:2px; color:var(--text); letter-spacing:.05em" id="ml-title">AQI</div>
+          <div id="ml-cats" class="legend-cats"></div>
+          <div id="ml-grad" class="legend-bar-grad" style="display:none;"></div>
+          <div class="legend-labels-row" id="ml-labels"><span>—</span><span>—</span></div>
+        </div>
+      </div>
+
+      <!-- Stats Strip -->
+      <div id="stats-strip">
+        <div class="sv"><span class="sv-lbl">DATE</span><span class="sv-val accent" id="sv-date">—</span></div>
+        <div class="sv-sep"></div>
+        <div class="sv"><span class="sv-lbl">VARIABLE</span><span class="sv-val" id="sv-var">AQI</span></div>
+        <div class="sv-sep"></div>
+        <div class="sv"><span class="sv-lbl">HOUR</span><span class="sv-val" id="sv-hour">00:00</span></div>
+        <div class="sv-sep"></div>
+        <div class="sv"><span class="sv-lbl">MEAN</span><span class="sv-val" id="sv-mean">—</span></div>
+        <div class="sv-sep"></div>
+        <div class="sv"><span class="sv-lbl">PIXEL</span><span class="sv-val" id="sv-pixel">none selected</span></div>
+        <div class="sv-spacer"></div>
+        <div class="sv" style="align-items:flex-end"><span class="sv-lbl">SERVER</span><span class="sv-val" id="sv-server" style="font-size:9px">—</span></div>
+      </div>
+
+      <!-- Handle -->
+      <div id="handle" onclick="togglePanel()">
+        <div class="hbar"></div>
+        <span class="hlbl" id="hlbl">▲ CLICK TO VIEW CHARTS</span>
+      </div>
+
+      <!-- Chart Panel -->
+      <div id="panel">
+        <div id="ptabs">
+          <button class="ptab on" data-pv="pixel">Pixel Hourly Trend</button>
+          <button class="ptab" data-pv="compare">Variable Compare</button>
+          <button class="ptab" data-pv="dist">Grid Distribution</button>
+        </div>
+
+        <!-- Pixel hourly -->
+        <div class="pview vis" id="pv-pixel">
+          <div class="cpane" style="flex:2">
+            <div class="ch"><span class="ct">Hourly Trend</span><span class="cs" id="cs-pixel">click on the map to select a pixel</span>
+              <div class="ch-actions"><button class="ch-btn" onclick="downloadChart('c-pixel')">↓</button><button class="ch-btn" onclick="fullscreenChart('c-pixel')">↗</button></div>
+            </div>
+            <div class="cw">
+              <canvas id="c-pixel"></canvas>
+              <div class="chart-placeholder" id="pixel-ph">
+                <div class="ph-icon">📍</div>
+                Click anywhere on the map to see<br>the 24-hour trend for that pixel
+              </div>
+            </div>
+          </div>
+          <div class="cpane">
+            <div class="ch"><span class="ct">Pixel Snapshot</span><span class="cs">all pollutants, current hour</span>
+              <div class="ch-actions"><button class="ch-btn" onclick="downloadChart('c-snapshot')">↓</button><button class="ch-btn" onclick="fullscreenChart('c-snapshot')">↗</button></div>
+            </div>
+            <div class="cw"><canvas id="c-snapshot"></canvas></div>
+          </div>
+        </div>
+
+        <!-- Variable compare -->
+        <div class="pview" id="pv-compare">
+          <div class="cpane">
+            <div class="ch"><span class="ct">Multi-Pollutant Trend</span><span class="cs">selected pixel · normalized 0–1</span>
+              <div class="ch-actions"><button class="ch-btn" onclick="downloadChart('c-compare')">↓</button><button class="ch-btn" onclick="fullscreenChart('c-compare')">↗</button></div>
+            </div>
+            <div class="cw">
+              <canvas id="c-compare"></canvas>
+              <div class="chart-placeholder" id="compare-ph">
+                <div class="ph-icon">📊</div>
+                Select a pixel on the map first
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Distribution -->
+        <div class="pview" id="pv-dist">
+          <div class="cpane">
+            <div class="ch"><span class="ct">24-Hour Grid Mean</span><span class="cs" id="cs-dist">current variable, whole-grid average per hour</span>
+              <div class="ch-actions"><button class="ch-btn" onclick="downloadChart('c-dist')">↓</button><button class="ch-btn" onclick="fullscreenChart('c-dist')">↗</button></div>
+            </div>
+            <div class="cw"><canvas id="c-dist"></canvas></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Fullscreen Chart Modal -->
+<div id="fs-overlay">
+  <div id="fs-box">
+    <div id="fs-hdr">
+      <div><div id="fs-title">Chart</div><div id="fs-sub"></div></div>
+      <div class="fs-acts">
+        <button class="fs-act" onclick="downloadFsChart()">↓ Download</button>
+        <button class="fs-act primary" onclick="closeFsChart()">× Close</button>
+      </div>
+    </div>
+    <div id="fs-body"><canvas id="fs-canvas"></canvas></div>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   AQI INDIA OBSERVATORY — app.js (inline)
+   ════════════════════════════════════════════════════════════════════ */
+const VAR_COLORS = {
+  'AQI':'#ff9d2e', 'PM2.5':'#ff5c6c', 'PM10':'#ffb84d', 'NO2':'#7c8cff',
+  'SO2':'#36e2c4', 'CO':'#c084fc', 'Ozone':'#4ade80'
+};
+const AQI_CATS = [
+  {lo:0,hi:50,label:'Good',color:'#00e400'},
+  {lo:51,hi:100,label:'Moderate',color:'#ffff00'},
+  {lo:101,hi:150,label:'Unhealthy (SG)',color:'#ff7e00'},
+  {lo:151,hi:200,label:'Unhealthy',color:'#ff0000'},
+  {lo:201,hi:300,label:'Very Unhealthy',color:'#8f3f97'},
+  {lo:301,hi:500,label:'Hazardous',color:'#7e0023'},
+];
+
+let STATE = {
+  files: [], variables: [], units: {},
+  file: null, variable: 'AQI', hour: 0,
+  bounds: null, nHours: 24,
+  playing: false, playTimer: null, speed: 1, baseInterval: 900,
+  selectedPixel: null, opacity: 0.85,
+  charts: {}, fsChartKey: null, pixelReqId: 0,
+};
+
+let map, overlayLayer, basemapLayer, crosshair;
+const BASEMAPS = {
+  dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+  topo: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+};
+
+function loadingStep(pct, msg){
+  document.getElementById('lp').style.width = pct+'%';
+  document.getElementById('lmsg').textContent = msg;
+}
+
+async function boot(){
+  loadingStep(15, 'CHECKING SERVER…');
+  try{
+    const h = await fetch('/api/health').then(r=>r.json());
+    setServerStatus(true);
+  }catch(e){ setServerStatus(false); }
+
+  loadingStep(35, 'LOADING DATASET INDEX…');
+  const meta = await fetch('/api/files').then(r=>r.json()).catch(()=>({files:[],variables:[],units:{}}));
+  STATE.files = meta.files || [];
+  STATE.variables = meta.variables || [];
+  STATE.units = meta.units || {};
+
+  buildDateList();
+  buildVarGrid();
+
+  if(STATE.files.length){
+    STATE.file = STATE.files[STATE.files.length-1].id;
+  }
+
+  loadingStep(55, 'INITIALIZING MAP…');
+  initMap();
+
+  if(STATE.file){
+    loadingStep(75, 'FETCHING GRID METADATA…');
+    await loadFileMeta(STATE.file);
+  }
+
+  loadingStep(92, 'RENDERING OVERLAY…');
+  await refreshAll();
+
+  loadingStep(100, 'READY');
+  setTimeout(()=>document.getElementById('loader').classList.add('hide'), 350);
+
+  bindUI();
+}
+
+function setServerStatus(ok){
+  document.getElementById('server-dot').className = 'status-dot ' + (ok?'ok':'bad');
+  document.getElementById('server-status').textContent = ok ? 'Live (Flask)' : 'Offline';
+  document.getElementById('sv-server').textContent = ok ? 'ONLINE' : 'OFFLINE';
+}
+
+/* ── Sidebar builders ── */
+function buildDateList(){
+  const el = document.getElementById('date-list');
+  if(!STATE.files.length){
+    el.innerHTML = `<div class="empty-state" style="height:70px;font-size:11px;">No .nc files found in /data.<br>Drop your aqi_YYYY-MM-DD.nc files there and restart.</div>`;
+    return;
+  }
+  el.innerHTML = STATE.files.map(f => `
+    <button class="date-btn ${f.id===STATE.file?'on':''}" data-file="${f.id}">
+      <span>${f.date}</span><span class="dtag">${f.id.replace('aqi_','').replace('.nc','')}</span>
+    </button>`).join('');
+  el.querySelectorAll('.date-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      STATE.file = btn.dataset.file;
+      el.querySelectorAll('.date-btn').forEach(b=>b.classList.toggle('on', b===btn));
+      STATE.selectedPixel = null;
+      await loadFileMeta(STATE.file);
+      await refreshAll();
+    });
+  });
+}
+
+function buildVarGrid(){
+  const el = document.getElementById('var-grid');
+  const vars = STATE.variables.length ? STATE.variables : ['AQI','PM2.5','PM10','NO2','SO2','CO','Ozone'];
+  el.innerHTML = vars.map(v => `
+    <button class="var-btn ${v===STATE.variable?'on':''}" data-var="${v}">
+      ${v}<span class="vunit">${STATE.units[v]||''}</span>
+    </button>`).join('');
+  el.querySelectorAll('.var-btn').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      STATE.variable = btn.dataset.var;
+      el.querySelectorAll('.var-btn').forEach(b=>b.classList.toggle('on', b===btn));
+      buildLegend();
+      await refreshAll();
+      if(STATE.selectedPixel) await loadPixelCharts();
+    });
+  });
+}
+
+function buildLegend(){
+  const sbBody = document.getElementById('legend-body');
+  const mlTitle = document.getElementById('ml-title');
+  const mlCats = document.getElementById('ml-cats');
+  const mlGrad = document.getElementById('ml-grad');
+  const mlLabels = document.getElementById('ml-labels');
+  mlTitle.textContent = STATE.variable + (STATE.units[STATE.variable] ? ' · '+STATE.units[STATE.variable] : '');
+
+  // Both AQI and pollutant layers now render as a continuous color gradient
+  // (no more hard "class" bands), so the legend always shows a single
+  // gradient bar — just with different colors/breakpoints for AQI vs others.
+  mlCats.style.display='none';
+  mlGrad.style.display='block';
+
+  if(STATE.variable === 'AQI'){
+    sbBody.innerHTML = `<div class="colorbar-wrap"><div class="colorbar aqi"></div>
+      <div class="colorbar-labels aqi"><span>0</span><span>50</span><span>100</span><span>150</span><span>200</span><span>300</span><span>500</span></div></div>
+      <div style="font-size:10.5px;color:var(--text-faint);margin-top:6px;">Good → Moderate → USG → Unhealthy → V.Unhealthy → Hazardous</div>`;
+    mlGrad.className = 'legend-bar-grad aqi';
+    mlLabels.className = 'legend-labels-row aqi';
+    mlLabels.innerHTML = `<span>0</span><span>50</span><span>100</span><span>150</span><span>200</span><span>300</span><span>500</span>`;
+  } else {
+    sbBody.innerHTML = `<div class="colorbar-wrap"><div class="colorbar"></div>
+      <div class="colorbar-labels"><span>low</span><span>mid</span><span>high</span></div></div>
+      <div style="font-size:10.5px;color:var(--text-faint);margin-top:6px;">Scaled to current grid min/max for ${STATE.variable}.</div>`;
+    mlGrad.className = 'legend-bar-grad';
+    mlGrad.style.background = 'linear-gradient(90deg,#0c0c3c,#281e82,#6e1ea0,#dc3c78,#ff8c28,#fff578)';
+    mlLabels.className = 'legend-labels-row';
+    mlLabels.innerHTML = `<span id="ml-min">—</span><span id="ml-max">—</span>`;
+  }
+}
+
+/* ── Map ── */
+function initMap(){
+  map = L.map('map', {zoomControl:true, attributionControl:true, minZoom:3, maxZoom:10}).setView([22.5,82],5);
+  basemapLayer = L.tileLayer(BASEMAPS.dark, {subdomains:'abcd', attribution:'&copy; OSM &copy; CARTO'}).addTo(map);
+
+  crosshair = L.layerGroup().addTo(map);
+
+  map.on('mousemove', (e)=>{
+    document.getElementById('coords-ov').textContent = `lat ${e.latlng.lat.toFixed(3)} · lon ${e.latlng.lng.toFixed(3)}`;
+  });
+  map.on('click', async (e)=>{
+    if(!STATE.file) return;
+    STATE.selectedPixel = {lat:e.latlng.lat, lon:e.latlng.lng};
+    drawCrosshair(e.latlng);
+    document.getElementById('sv-pixel').textContent = `${e.latlng.lat.toFixed(2)}, ${e.latlng.lng.toFixed(2)}`;
+    openPanel();
+    await loadPixelCharts();
+  });
+
+  document.getElementById('bm-group').addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('.bm-btn'); if(!btn) return;
+    document.querySelectorAll('.bm-btn').forEach(b=>b.classList.toggle('on', b===btn));
+    map.removeLayer(basemapLayer);
+    basemapLayer = L.tileLayer(BASEMAPS[btn.dataset.bm], {subdomains:'abcd', attribution:'&copy; OSM &copy; CARTO'}).addTo(map);
+    basemapLayer.bringToBack();
+  });
+}
+
+function drawCrosshair(latlng){
+  crosshair.clearLayers();
+  if(!document.getElementById('tg-crosshair').checked) return;
+  L.circleMarker(latlng, {radius:7, color:'#ff9d2e', weight:2, fillColor:'#ff9d2e', fillOpacity:.25, interactive:false}).addTo(crosshair);
+  L.circleMarker(latlng, {radius:2, color:'#ff9d2e', weight:2, fillColor:'#ff9d2e', fillOpacity:1, interactive:false}).addTo(crosshair);
+}
+
+/* ── Data loading ── */
+async function loadFileMeta(fileId){
+  const meta = await fetch(`/api/meta/${fileId}`).then(r=>r.json());
+  STATE.bounds = meta;
+  STATE.nHours = meta.n_hours || 24;
+  document.getElementById('hour-slider').max = STATE.nHours - 1;
+  document.getElementById('hour-of').textContent = `hour ${STATE.hour} / ${STATE.nHours-1}`;
+  document.getElementById('sv-date').textContent = fileId.replace('aqi_','').replace('.nc','');
+  if(map){
+    const b = [[meta.lat_min, meta.lon_min],[meta.lat_max, meta.lon_max]];
+    map.fitBounds(b, {padding:[10,10]});
+  }
+}
+
+async function refreshAll(){
+  if(!STATE.file) return;
+  document.getElementById('map-badge').textContent = `${STATE.variable} · LOADING…`;
+  await Promise.all([updateOverlay(), updateStats()]);
+  updateHourReadout();
+  document.getElementById('map-badge').textContent = `${STATE.variable} · ${hourLabel(STATE.hour)}`;
+  document.getElementById('sv-var').textContent = STATE.variable;
+}
+
+async function updateOverlay(){
+  if(!STATE.file || !STATE.bounds) return;
+  if(!document.getElementById('tg-overlay').checked){
+    if(overlayLayer){ map.removeLayer(overlayLayer); overlayLayer = null; }
+    return;
+  }
+  const url = `/api/overlay/${STATE.file}/${encodeURIComponent(STATE.variable)}/${STATE.hour}.png?t=${Date.now()}`;
+  const b = [[STATE.bounds.lat_min, STATE.bounds.lon_min],[STATE.bounds.lat_max, STATE.bounds.lon_max]];
+
+  // Preload the frame fully before swapping it in — this is what removes the
+  // "frame by frame" jump-cut feel: by the time we touch the map, the pixels
+  // are already decoded, so the only thing animating is a smooth CSS opacity
+  // crossfade between old and new frame.
+  await new Promise((resolve)=>{
+    const img = new Image();
+    img.onload = resolve; img.onerror = resolve;
+    img.src = url;
+  });
+
+  const fadeMs = STATE.playing ? Math.max(90, Math.min(260, frameInterval()*0.45)) : 180;
+  const newLayer = L.imageOverlay(url, b, {opacity:0, interactive:false}).addTo(map);
+  const el = newLayer.getElement();
+  if(el) el.style.transition = `opacity ${fadeMs}ms linear`;
+  // give the browser a paint frame with opacity:0 applied before transitioning,
+  // otherwise the transition can get coalesced and skip straight to the end value
+  requestAnimationFrame(()=> requestAnimationFrame(()=> newLayer.setOpacity(STATE.opacity)));
+
+  const oldLayer = overlayLayer;
+  overlayLayer = newLayer;
+  if(oldLayer){
+    setTimeout(()=>{ map.removeLayer(oldLayer); }, fadeMs + 60);
+  }
+}
+
+async function updateStats(){
+  if(!STATE.file) return;
+  const s = await fetch(`/api/stats/${STATE.file}/${encodeURIComponent(STATE.variable)}/${STATE.hour}`).then(r=>r.json()).catch(()=>null);
+  if(!s || s.count===0){
+    document.getElementById('st-min').textContent='—';
+    document.getElementById('st-max').textContent='—';
+    document.getElementById('st-mean').textContent='—';
+    document.getElementById('st-count').textContent='0';
+    document.getElementById('sv-mean').textContent='—';
+    return;
+  }
+  document.getElementById('st-min').textContent = s.min.toFixed(1);
+  document.getElementById('st-max').textContent = s.max.toFixed(1);
+  document.getElementById('st-mean').textContent = s.mean.toFixed(1);
+  document.getElementById('st-count').textContent = s.count.toLocaleString();
+  document.getElementById('sv-mean').textContent = s.mean.toFixed(1);
+  if(STATE.variable !== 'AQI'){
+    const minEl = document.getElementById('ml-min'); const maxEl = document.getElementById('ml-max');
+    if(minEl) minEl.textContent = s.min.toFixed(1);
+    if(maxEl) maxEl.textContent = s.max.toFixed(1);
+  }
+}
+
+function hourLabel(h){ return String(h).padStart(2,'0') + ':00'; }
+function updateHourReadout(){
+  document.getElementById('hour-big').textContent = hourLabel(STATE.hour);
+  document.getElementById('hour-of').textContent = `hour ${STATE.hour} / ${STATE.nHours-1}`;
+  document.getElementById('hour-slider').value = STATE.hour;
+  document.getElementById('sv-hour').textContent = hourLabel(STATE.hour);
+}
+
+/* ── Hour controls ── */
+function stepHour(d){
+  STATE.hour = (STATE.hour + d + STATE.nHours) % STATE.nHours;
+  refreshAll();
+}
+function frameInterval(){ return STATE.baseInterval / STATE.speed; }
+function startPlayTimer(){
+  clearInterval(STATE.playTimer);
+  STATE.playTimer = setInterval(()=>{ stepHour(1); }, frameInterval());
+}
+function togglePlay(){
+  STATE.playing = !STATE.playing;
+  const btn = document.getElementById('play-btn');
+  if(STATE.playing){
+    btn.textContent = '⏸ Pause';
+    btn.classList.add('playing');
+    startPlayTimer();
+  } else {
+    btn.innerHTML = '▶ &nbsp;Animate 24h';
+    btn.classList.remove('playing');
+    clearInterval(STATE.playTimer);
+  }
+}
+
+/* ── Pixel charts ── */
+async function loadPixelCharts(){
+  if(!STATE.file || !STATE.selectedPixel) return;
+  document.getElementById('pixel-ph').style.display='none';
+  document.getElementById('compare-ph').style.display='none';
+  const {lat, lon} = STATE.selectedPixel;
+
+  // Each click bumps this id. If the user clicks a new pixel before the
+  // previous fetch resolves, the stale (earlier) response is discarded
+  // instead of overwriting the charts with the wrong pixel's data — this is
+  // what caused "click elsewhere and charts don't refresh".
+  const reqId = ++STATE.pixelReqId;
+  const data = await fetch(`/api/pixel?file=${STATE.file}&lat=${lat}&lon=${lon}`).then(r=>r.json()).catch(()=>null);
+  if(reqId !== STATE.pixelReqId) return; // a newer pixel click superseded this request
+  if(!data || data.error) return;
+
+  document.getElementById('cs-pixel').textContent = `lat ${data.lat.toFixed(3)}, lon ${data.lon.toFixed(3)}`;
+  document.getElementById('sv-pixel').textContent = `${data.lat.toFixed(2)}, ${data.lon.toFixed(2)}`;
+
+  // 1) single-variable hourly trend
+  const hours = data.hours.map(h=>hourLabel(h));
+  const seriesMain = data.series[STATE.variable] || [];
+  upsertChart('c-pixel', {
+    type:'line',
+    data:{ labels:hours, datasets:[{
+      label: STATE.variable, data: seriesMain, borderColor: VAR_COLORS[STATE.variable]||'#ff9d2e',
+      backgroundColor: hexAlpha(VAR_COLORS[STATE.variable]||'#ff9d2e', .15), fill:true, tension:.35, pointRadius:2,
+      borderWidth:2,
+    }]},
+    options: lineOpts(STATE.units[STATE.variable]||'')
+  });
+
+  // 2) snapshot bar — all pollutants at current hour
+  const vars = Object.keys(data.series);
+  const snapVals = vars.map(v => data.series[v][STATE.hour]);
+  upsertChart('c-snapshot', {
+    type:'bar',
+    data:{ labels: vars, datasets:[{ data: snapVals, backgroundColor: vars.map(v=>VAR_COLORS[v]||'#888'), borderRadius:5 }]},
+    options: barOpts()
+  });
+
+  // 3) normalized multi-line compare
+  const compDatasets = vars.map(v=>{
+    const arr = data.series[v].map(x => x===null?null:x);
+    const valid = arr.filter(x=>x!==null);
+    const mn = Math.min(...valid), mx = Math.max(...valid);
+    const norm = arr.map(x => x===null?null: (mx>mn ? (x-mn)/(mx-mn) : 0.5));
+    return {label:v, data:norm, borderColor:VAR_COLORS[v]||'#888', backgroundColor:'transparent', tension:.35, pointRadius:0, borderWidth: v===STATE.variable?3:1.5};
+  });
+  upsertChart('c-compare', {
+    type:'line',
+    data:{ labels:hours, datasets:compDatasets },
+    options: lineOpts('normalized 0–1')
+  });
+}
+
+/* ── Grid distribution (24h mean for current variable) ── */
+let distCache = {};
+async function loadDistChart(){
+  if(!STATE.file) return;
+  const key = STATE.file+'|'+STATE.variable;
+  document.getElementById('cs-dist').textContent = `${STATE.variable} · whole-grid average per hour`;
+  if(!distCache[key]){
+    const proms = [];
+    for(let h=0; h<STATE.nHours; h++){
+      proms.push(fetch(`/api/stats/${STATE.file}/${encodeURIComponent(STATE.variable)}/${h}`).then(r=>r.json()));
+    }
+    distCache[key] = await Promise.all(proms);
+  }
+  const stats = distCache[key];
+  const labels = stats.map((_,h)=>hourLabel(h));
+  const means = stats.map(s=>s && s.mean!==null ? s.mean : null);
+  upsertChart('c-dist', {
+    type:'bar',
+    data:{ labels, datasets:[{ data: means, backgroundColor: VAR_COLORS[STATE.variable]||'#ff9d2e', borderRadius:4 }]},
+    options: barOpts()
+  });
+}
+
+/* ── Chart helpers ── */
+function lineOpts(unit){
+  return { responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{ display:true, labels:{color:'#8c9bb5', boxWidth:10, font:{size:10}} }, tooltip:{mode:'index', intersect:false} },
+    scales:{ x:{ ticks:{color:'#566177', font:{size:9}}, grid:{color:'#1b2433'} },
+             y:{ ticks:{color:'#566177', font:{size:9}}, grid:{color:'#1b2433'}, title:{display:!!unit, text:unit, color:'#566177', font:{size:9}} } },
+    interaction:{mode:'index', intersect:false},
+  };
+}
+function barOpts(){
+  return { responsive:true, maintainAspectRatio:false,
+    plugins:{ legend:{display:false} },
+    scales:{ x:{ ticks:{color:'#566177', font:{size:9}}, grid:{display:false} },
+             y:{ ticks:{color:'#566177', font:{size:9}}, grid:{color:'#1b2433'} } } };
+}
+function upsertChart(canvasId, cfg){
+  const ctx = document.getElementById(canvasId);
+  if(STATE.charts[canvasId]) STATE.charts[canvasId].destroy();
+  STATE.charts[canvasId] = new Chart(ctx, cfg);
+}
+function hexAlpha(hex, a){
+  const c = hex.replace('#','');
+  const r=parseInt(c.substr(0,2),16), g=parseInt(c.substr(2,2),16), b=parseInt(c.substr(4,2),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/* ── Panel / tabs ── */
+function openPanel(){
+  document.getElementById('panel').classList.add('open');
+  document.getElementById('hlbl').textContent = '▼ HIDE CHARTS';
+}
+function togglePanel(){
+  const p = document.getElementById('panel');
+  p.classList.toggle('open');
+  document.getElementById('hlbl').textContent = p.classList.contains('open') ? '▼ HIDE CHARTS' : '▲ CLICK TO VIEW CHARTS';
+}
+document.addEventListener('click', (e)=>{
+  const tab = e.target.closest('.ptab'); if(!tab) return;
+  document.querySelectorAll('.ptab').forEach(t=>t.classList.toggle('on', t===tab));
+  document.querySelectorAll('.pview').forEach(v=>v.classList.remove('vis'));
+  document.getElementById('pv-'+tab.dataset.pv).classList.add('vis');
+  if(tab.dataset.pv === 'dist') loadDistChart();
+});
+
+function toggleSidebar(){ document.getElementById('sb').classList.toggle('collapsed'); setTimeout(()=>map && map.invalidateSize(), 260); }
+
+/* ── Fullscreen ── */
+function fullscreenChart(canvasId){
+  const src = STATE.charts[canvasId]; if(!src) return;
+  STATE.fsChartKey = canvasId;
+  document.getElementById('fs-title').textContent = src.data.datasets.length>1 ? 'Multi-series chart' : (src.data.datasets[0].label || canvasId);
+  document.getElementById('fs-sub').textContent = `${STATE.file||''} · ${STATE.variable}`;
+  document.getElementById('fs-overlay').classList.add('vis');
+  const ctx = document.getElementById('fs-canvas');
+  if(STATE.charts['fs']) STATE.charts['fs'].destroy();
+  STATE.charts['fs'] = new Chart(ctx, { type: src.config.type, data: JSON.parse(JSON.stringify(src.data)), options: {...src.config.options, maintainAspectRatio:false} });
+}
+function closeFsChart(){ document.getElementById('fs-overlay').classList.remove('vis'); }
+function downloadChart(canvasId){
+  const c = STATE.charts[canvasId]; if(!c) return;
+  const a = document.createElement('a'); a.href = c.toBase64Image(); a.download = canvasId+'.png'; a.click();
+}
+function downloadFsChart(){
+  const c = STATE.charts['fs']; if(!c) return;
+  const a = document.createElement('a'); a.href = c.toBase64Image(); a.download = (STATE.fsChartKey||'chart')+'.png'; a.click();
+}
+
+/* ── UI bindings ── */
+function bindUI(){
+  document.getElementById('hour-slider').addEventListener('input', (e)=>{
+    STATE.hour = parseInt(e.target.value);
+    refreshAll();
+    if(STATE.selectedPixel) updateSnapshotOnly();
+  });
+  document.getElementById('opacity-slider').addEventListener('input', (e)=>{
+    STATE.opacity = parseInt(e.target.value)/100;
+    document.getElementById('opacity-val').textContent = e.target.value+'%';
+    if(overlayLayer) overlayLayer.setOpacity(STATE.opacity);
+  });
+  document.getElementById('tg-overlay').addEventListener('change', updateOverlay);
+  document.getElementById('speed-select').addEventListener('change', (e)=>{
+    STATE.speed = parseFloat(e.target.value) || 1;
+    if(STATE.playing) startPlayTimer();
+  });
+  document.getElementById('tg-crosshair').addEventListener('change', ()=>{
+    if(STATE.selectedPixel) drawCrosshair(L.latLng(STATE.selectedPixel.lat, STATE.selectedPixel.lon));
+  });
+  buildLegend();
+}
+
+async function updateSnapshotOnly(){
+  // lightweight refresh of snapshot bar + main trend marker without full refetch
+  if(!STATE.selectedPixel) return;
+  await loadPixelCharts();
+}
+
+boot();
+</script>
+</body>
+</html>
