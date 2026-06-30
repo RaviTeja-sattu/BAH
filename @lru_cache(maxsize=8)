@@ -45,7 +45,7 @@ GRID_LON_OFFSET_DEG = 0.0
 # between neighboring cells (bilinear) instead of showing each grid cell as a
 # single flat-colored square. This is what makes the *map itself* look like
 # a continuous gradient, matching the legend — not just the color math.
-OVERLAY_SMOOTH_FACTOR = 3  # 1 = off (raw pixel grid, blocky)
+OVERLAY_SMOOTH_FACTOR = 2  # 1 = off (raw pixel grid, blocky)
 
 VARIABLES = ["AQI", "PM2.5", "PM10", "NO2", "SO2", "CO", "Ozone"]
  
@@ -100,7 +100,7 @@ def list_data_files():
     return files
 
 
-@lru_cache(maxsize=8)
+@lru_cache(maxsize=1)
 def open_dataset(file_id):
     path = os.path.join(DATA_DIR, file_id)
     if not os.path.isfile(path):
